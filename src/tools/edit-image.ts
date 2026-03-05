@@ -54,7 +54,7 @@ export function createEditImageTool(generator: ImageGenerator, fixedModel?: "pro
   return {
     name: "edit_image",
     description:
-      "Edits an existing image based on a text prompt using Google Gemini API. Optionally accepts additional reference images to guide the editing.",
+      "Edits an existing image based on a text prompt using OpenRouter API. Optionally accepts additional reference images to guide the editing.",
     inputSchema,
     async handler(input: InputType) {
       try {

@@ -16,7 +16,7 @@ const DEFAULT_PORT = 5000;
 const program = new Command()
   .option("--transport <stdio|http>", "transport type", "stdio")
   .option("--port <number>", "port for HTTP transport", DEFAULT_PORT.toString())
-  .option("--apiKey <key>", "Google API key for image generation")
+  .option("--apiKey <key>", "OpenRouter API key for image generation")
   .option("--model <pro|normal>", "Fixed model to use for all operations (optional)")
   .allowUnknownOption()
   .parse(process.argv);
@@ -55,7 +55,7 @@ const CLI_PORT = (() => {
 })();
 
 // Get API key from CLI or environment
-const apiKey = cliOptions.apiKey || process.env.GOOGLE_API_KEY;
+const apiKey = cliOptions.apiKey || process.env.OPENROUTER_API_KEY;
 
 // Get fixed model from CLI if provided
 const fixedModel = cliOptions.model;

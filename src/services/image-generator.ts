@@ -1,26 +1,25 @@
-import { GoogleGenAI } from "@google/genai";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
 /**
  * Supported aspect ratios for image generation
  */
-export type AspectRatio = "1:1" | "2:3" | "3:2" | "3:4" | "4:3" | "4:5" | "5:4" | "9:16" | "16:9" | "21:9";
+export type AspectRatio = "1:1" | "2:3" | "3:2" | "3:4" | "4:3" | "4:5" | "5:4" | "9:16" | "16:9" | "21:9" | "1:4" | "4:1" | "1:8" | "8:1";
 
 /**
- * Service for generating and editing images using Google Gemini API
+ * Service for generating and editing images using OpenRouter API
  */
 export class ImageGenerator {
-  private ai: GoogleGenAI;
+  private apiKey: string;
 
   constructor(apiKey?: string) {
-    const key = apiKey || process.env.GOOGLE_API_KEY;
+    const key = apiKey || process.env.OPENROUTER_API_KEY;
     if (!key) {
       throw new Error(
-        "Google API key is required. Set GOOGLE_API_KEY environment variable or provide it in constructor."
+        "OpenRouter API key is required. Set OPENROUTER_API_KEY environment variable or provide it in constructor."
       );
     }
-    this.ai = new GoogleGenAI({ apiKey: key });
+    this.apiKey = key;
   }
 
   /**
@@ -35,73 +34,133 @@ export class ImageGenerator {
   async generateImage(
     prompt: string,
     outputPath: string | undefined,
-    model: "pro" | "normal" = "pro",
+    _model: "pro" | "normal" = "pro", // model parameter ignored since we use a fixed model
     referenceImagesPaths?: string[],
     aspectRatio: AspectRatio = "16:9"
   ): Promise<string> {
-    const modelName =
-      model === "pro" ? "gemini-3-pro-image-preview" : "gemini-2.5-flash-image";
+    const modelName = "google/gemini-3.1-flash-image-preview";
 
-    // Build contents array
-    const contents: any[] = [{ text: prompt }];
+    // Build messages array
+    const content: any[] = [
+      { type: "text", text: prompt }
+    ];
 
     // Add reference images if provided
     if (referenceImagesPaths && referenceImagesPaths.length > 0) {
       for (const imagePath of referenceImagesPaths) {
         const imageData = this.readImageAsBase64(imagePath);
         const mimeType = this.getMimeType(imagePath);
-        contents.push({
-          inlineData: {
-            mimeType,
-            data: imageData,
-          },
+        content.push({
+          type: "image_url",
+          image_url: {
+            url: `data:${mimeType};base64,${imageData}`
+          }
         });
       }
     }
 
-    const response = await this.ai.models.generateContent({
+    const payload = {
       model: modelName,
-      contents: contents,
-      config: {
-        responseModalities: ["TEXT", "IMAGE"],
-        imageConfig: { aspectRatio },
+      messages: [
+        {
+          role: "user",
+          content: content
+        }
+      ],
+      modalities: ["image"],
+      image_config: { aspect_ratio: aspectRatio }
+    };
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${this.apiKey}`,
+        "HTTP-Referer": "https://github.com/choesumin/nanobanana-api-mcp", // Required by OpenRouter
+        "X-Title": "Nanobanana API MCP" // Required by OpenRouter
       },
+      body: JSON.stringify(payload)
     });
 
-    // Extract and save the image
-    if (!response.candidates || response.candidates.length === 0) {
-      throw new Error("No candidates returned in the response");
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
-    const candidate = response.candidates[0];
-    if (!candidate || !candidate.content || !candidate.content.parts) {
-      throw new Error("Invalid response structure");
+    const data: any = await response.json();
+
+    // Extract image from response. OpenRouter returns images in message.images or content
+    const choice = data.choices?.[0];
+    if (!choice || !choice.message) {
+      throw new Error("Invalid response structure from OpenRouter");
     }
 
-    for (const part of candidate.content.parts) {
-      if (part.inlineData && part.inlineData.data) {
-        const imageData = part.inlineData.data;
+    let base64Image: string | null = null;
 
-        // If no output path provided, return base64 string
-        if (!outputPath) {
-          return imageData;
-        }
-
-        // Otherwise save to file
-        const buffer = Buffer.from(imageData, "base64");
-
-        // Ensure directory exists
-        const dir = path.dirname(outputPath);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-
-        fs.writeFileSync(outputPath, buffer);
-        return outputPath;
+    // Check content text for image data url (some models return it this way)
+    if (choice.message.content && choice.message.content.includes("data:image")) {
+      const match = choice.message.content.match(/data:image\/[^;]+;base64,([a-zA-Z0-9+/=]+)/);
+      if (match && match[1]) {
+        base64Image = match[1];
       }
     }
 
-    throw new Error("No image was generated in the response");
+    // Some models return in images array or message.images
+    if (!base64Image && choice.message.images && choice.message.images.length > 0) {
+      const img = choice.message.images[0];
+      if (typeof img === 'string') {
+        if (img.startsWith("data:image")) {
+          base64Image = img.split(",")[1];
+        } else {
+          base64Image = img; // Assume base64
+        }
+      } else if (img && typeof img === 'object' && img.image_url && img.image_url.url) {
+        const url = img.image_url.url;
+        if (url.startsWith("data:image")) {
+          base64Image = url.split(",")[1];
+        } else {
+          base64Image = url; 
+        }
+      } else if (img && typeof img === 'object' && img.url) {
+        if (img.url.startsWith("data:image")) {
+          base64Image = img.url.split(",")[1];
+        } else {
+          base64Image = img.url; 
+        }
+      }
+    }
+
+    // fallback to checking generic content
+    if (!base64Image && typeof choice.message.content === "string") {
+       // if the content itself is just the base64 or url
+       if (choice.message.content.startsWith("data:image")) {
+         base64Image = choice.message.content.split(",")[1];
+       } else if (/^[a-zA-Z0-9+/]+={0,2}$/.test(choice.message.content.trim())) {
+         base64Image = choice.message.content.trim();
+       }
+    }
+
+    if (!base64Image) {
+       console.error("OpenRouter response data:", JSON.stringify(data, null, 2));
+       throw new Error("No image data found in the OpenRouter response");
+    }
+
+    // If no output path provided, return base64 string
+    if (!outputPath) {
+      return base64Image;
+    }
+
+    // Otherwise save to file
+    const buffer = Buffer.from(base64Image, "base64");
+
+    // Ensure directory exists
+    const dir = path.dirname(outputPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    fs.writeFileSync(outputPath, buffer);
+    return outputPath;
   }
 
   /**
@@ -118,12 +177,11 @@ export class ImageGenerator {
     imageInput: string | { base64: string; mimeType: string },
     prompt: string,
     outputPath?: string,
-    model: "pro" | "normal" = "pro",
+    _model: "pro" | "normal" = "pro", // model parameter ignored since we use a fixed model
     referenceImagesPaths?: string[],
     aspectRatio: AspectRatio = "16:9"
   ): Promise<string> {
-    const modelName =
-      model === "pro" ? "gemini-3-pro-image-preview" : "gemini-2.5-flash-image";
+    const modelName = "google/gemini-3.1-flash-image-preview";
 
     // Determine if input is path or base64
     let imageData: string;
@@ -140,76 +198,132 @@ export class ImageGenerator {
     }
 
     // Build contents array with the image to edit
-    const contents: any[] = [
-      { text: prompt },
+    const content: any[] = [
+      { type: "text", text: prompt },
       {
-        inlineData: {
-          mimeType,
-          data: imageData,
-        },
-      },
+        type: "image_url",
+        image_url: {
+          url: `data:${mimeType};base64,${imageData}`
+        }
+      }
     ];
 
     // Add additional reference images if provided
     if (referenceImagesPaths && referenceImagesPaths.length > 0) {
       for (const refImagePath of referenceImagesPaths) {
-        const imageData = this.readImageAsBase64(refImagePath);
-        const mimeType = this.getMimeType(refImagePath);
-        contents.push({
-          inlineData: {
-            mimeType,
-            data: imageData,
-          },
+        const refImageData = this.readImageAsBase64(refImagePath);
+        const refMimeType = this.getMimeType(refImagePath);
+        content.push({
+          type: "image_url",
+          image_url: {
+            url: `data:${refMimeType};base64,${refImageData}`
+          }
         });
       }
     }
 
-    const response = await this.ai.models.generateContent({
+    const payload = {
       model: modelName,
-      contents: contents,
-      config: {
-        responseModalities: ["TEXT", "IMAGE"],
-        imageConfig: {
-          aspectRatio,
-          imageSize: "2K",
-        },
+      messages: [
+        {
+          role: "user",
+          content: content
+        }
+      ],
+      modalities: ["image"],
+      image_config: { aspect_ratio: aspectRatio }
+    };
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${this.apiKey}`,
+        "HTTP-Referer": "https://github.com/choesumin/nanobanana-api-mcp", // Required by OpenRouter
+        "X-Title": "Nanobanana API MCP" // Required by OpenRouter
       },
+      body: JSON.stringify(payload)
     });
 
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data: any = await response.json();
+
     // Extract and save the edited image
-    if (!response.candidates || response.candidates.length === 0) {
-      throw new Error("No candidates returned in the response");
+    const choice = data.choices?.[0];
+    if (!choice || !choice.message) {
+      throw new Error("Invalid response structure from OpenRouter");
     }
 
-    const candidate = response.candidates[0];
-    if (!candidate || !candidate.content || !candidate.content.parts) {
-      throw new Error("Invalid response structure");
-    }
+    let base64Image: string | null = null;
 
-    for (const part of candidate.content.parts) {
-      if (part.inlineData && part.inlineData.data) {
-        const imageData = part.inlineData.data;
-
-        // If no output path provided, return base64 string
-        if (!outputPath) {
-          return imageData;
-        }
-
-        // Otherwise save to file
-        const buffer = Buffer.from(imageData, "base64");
-
-        // Ensure directory exists
-        const dir = path.dirname(outputPath);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-
-        fs.writeFileSync(outputPath, buffer);
-        return outputPath;
+    // Check content text for image data url (some models return it this way)
+    if (choice.message.content && choice.message.content.includes("data:image")) {
+      const match = choice.message.content.match(/data:image\/[^;]+;base64,([a-zA-Z0-9+/=]+)/);
+      if (match && match[1]) {
+        base64Image = match[1];
       }
     }
 
-    throw new Error("No image was generated in the response");
+    // Some models return in images array or message.images
+    if (!base64Image && choice.message.images && choice.message.images.length > 0) {
+      const img = choice.message.images[0];
+      if (typeof img === 'string') {
+        if (img.startsWith("data:image")) {
+          base64Image = img.split(",")[1];
+        } else {
+          base64Image = img; // Assume base64
+        }
+      } else if (img && typeof img === 'object' && img.image_url && img.image_url.url) {
+        const url = img.image_url.url;
+        if (url.startsWith("data:image")) {
+          base64Image = url.split(",")[1];
+        } else {
+          base64Image = url; 
+        }
+      } else if (img && typeof img === 'object' && img.url) {
+        if (img.url.startsWith("data:image")) {
+          base64Image = img.url.split(",")[1];
+        } else {
+          base64Image = img.url; 
+        }
+      }
+    }
+
+    // fallback to checking generic content
+    if (!base64Image && typeof choice.message.content === "string") {
+       // if the content itself is just the base64 or url
+       if (choice.message.content.startsWith("data:image")) {
+         base64Image = choice.message.content.split(",")[1];
+       } else if (/^[a-zA-Z0-9+/]+={0,2}$/.test(choice.message.content.trim())) {
+         base64Image = choice.message.content.trim();
+       }
+    }
+
+    if (!base64Image) {
+       console.error("OpenRouter response data:", JSON.stringify(data, null, 2));
+       throw new Error("No image data found in the OpenRouter response");
+    }
+
+    // If no output path provided, return base64 string
+    if (!outputPath) {
+      return base64Image;
+    }
+
+    // Otherwise save to file
+    const buffer = Buffer.from(base64Image, "base64");
+
+    // Ensure directory exists
+    const dir = path.dirname(outputPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    fs.writeFileSync(outputPath, buffer);
+    return outputPath;
   }
 
   /**

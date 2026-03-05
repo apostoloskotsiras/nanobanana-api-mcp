@@ -48,9 +48,9 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@google/genai": "^1.30.0",
     "@modelcontextprotocol/sdk": "^1.0.4",
     "commander": "^14.0.1",
+    "node-fetch": "^3.3.2",
     "zod": "^3.22.4"
   },
   "devDependencies": {

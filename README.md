@@ -9,11 +9,11 @@
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 
-MCP (Model Context Protocol) server for generating and editing images using Google Gemini API.
+MCP (Model Context Protocol) server for generating and editing images using OpenRouter API.
 
 ## Features
 
-- **generate_image**: Generate images from text prompts using Google Gemini AI
+- **generate_image**: Generate images from text prompts using OpenRouter API
 - **edit_image**: Edit existing images based on text descriptions
 - Support for reference images to guide generation/editing
 - Multiple model options (Pro and Normal)
@@ -56,7 +56,7 @@ This will automatically configure the MCP server in your chosen client.
 
 ## Prerequisites
 
-You need a Google API key with access to Gemini models. Get your API key from [Google AI Studio](https://aistudio.google.com/api-keys).
+You need an OpenRouter API key with access to Gemini models. Get your API key from [OpenRouter](https://openrouter.ai/keys).
 
 You can provide the API key via CLI argument:
 
@@ -67,7 +67,7 @@ nanobanana-api-mcp --apiKey "your-api-key-here"
 Or set it as an environment variable:
 
 ```bash
-export GOOGLE_API_KEY="your-api-key-here"
+export OPENROUTER_API_KEY="your-api-key-here"
 nanobanana-api-mcp
 ```
 
@@ -78,7 +78,7 @@ Nanobanana MCP can be integrated with various AI coding assistants and IDEs that
 ### Requirements
 
 - Node.js >= v18.0.0
-- Google API key with Gemini access
+- OpenRouter API key with Gemini access
 - An MCP-compatible client (Cursor, Claude Code, VS Code, Windsurf, etc.)
 
 <details>
@@ -258,15 +258,15 @@ Nanobanana MCP provides the following tools that can be used by LLMs:
 
 ### generate_image
 
-Generates an image based on a text prompt using Google Gemini API.
+Generates an image based on a text prompt using OpenRouter API.
 
 **Parameters:**
 
 - `prompt` (string, required): Text description of the image to generate
 - `output_path` (string, optional): Absolute path where the generated image will be saved. If not provided, returns base64 encoded image data instead
 - `model` (enum, optional): Model to use - "pro" (default) or "normal" (not shown if --model is provided via CLI)
-  - `pro`: gemini-3-pro-image-preview (higher quality)
-  - `normal`: gemini-2.5-flash-image (faster)
+  - `pro`: google/gemini-3.1-flash-image-preview (higher quality)
+  - `normal`: google/gemini-3.1-flash-image-preview (faster)
 - `reference_images_path` (string[], optional): Array of absolute reference image paths to guide the generation
 - `aspect_ratio` (enum, optional): Aspect ratio for the image - "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9" (default), "21:9"
 
@@ -307,7 +307,7 @@ Generates an image based on a text prompt using Google Gemini API.
 
 ### edit_image
 
-Edits an existing image based on a text prompt using Google Gemini API.
+Edits an existing image based on a text prompt using OpenRouter API.
 
 **Parameters:**
 
@@ -419,7 +419,7 @@ Run the server directly:
 nanobanana-api-mcp --apiKey "your-api-key-here"
 
 # Using environment variable for API key
-export GOOGLE_API_KEY="your-api-key-here"
+export OPENROUTER_API_KEY="your-api-key-here"
 nanobanana-api-mcp
 
 # Fix model for all operations
@@ -431,7 +431,7 @@ nanobanana-api-mcp --apiKey "your-api-key-here" --transport http --port 5000
 
 **CLI Options:**
 
-- `--apiKey <key>`: Google API key for image generation (can also use GOOGLE_API_KEY env var)
+- `--apiKey <key>`: OpenRouter API key for image generation (can also use OPENROUTER_API_KEY env var)
 - `--model <pro|normal>`: Fix the model for all operations (optional, hides model parameter from tools)
 - `--transport <stdio|http>`: Transport type (default: stdio)
 - `--port <number>`: Port for HTTP transport (default: 5000)
@@ -462,7 +462,7 @@ npm run lint
 
 The project follows a modular architecture:
 
-- **services/**: Image generation and editing service using Google Gemini API
+- **services/**: Image generation and editing service using OpenRouter API
 - **tools/**: MCP tool implementations (generate_image, edit_image)
 - **types/**: TypeScript type definitions
 - **server.ts**: Main MCP server setup and configuration
@@ -488,4 +488,4 @@ choesumin
 
 ## Acknowledgments
 
-This project uses the [Google Generative AI SDK](https://www.npmjs.com/package/@google/genai) for image generation and editing capabilities.
+This project uses the OpenRouter API for image generation and editing capabilities.

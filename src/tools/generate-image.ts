@@ -42,7 +42,7 @@ export function createGenerateImageTool(generator: ImageGenerator, fixedModel?: 
   return {
     name: "generate_image",
     description:
-      "Generates an image based on a text prompt using Google Gemini API. Optionally accepts reference images to guide the generation.",
+      "Generates an image based on a text prompt using OpenRouter API. Optionally accepts reference images to guide the generation.",
     inputSchema,
     async handler(input: InputType) {
       try {
